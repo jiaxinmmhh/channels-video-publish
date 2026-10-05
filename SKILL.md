@@ -1,5 +1,7 @@
 ---
 name: channels-video-publish
+slug: channels-video-publish
+displayName: 视频号自动发布
 version: 1.0.0
 description: 自动上传并定时发布视频到微信视频号（视频号助手网页版）。用原生 CDP 驱动已登录的 Chrome，完成上传视频、填短标题/描述/合集、声明原创、设定时发表（或即时发表）。当用户说「发视频号」「视频号发布」「上传视频号」「视频号定时发表」「补声明原创」「视频号排期」时使用。也用于核查已发布条目的原创声明状态。
 agent_created: true
