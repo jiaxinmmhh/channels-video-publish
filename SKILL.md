@@ -2,7 +2,7 @@
 name: channels-video-publish
 slug: channels-video-publish
 displayName: 视频号自动发布
-version: 1.0.0
+version: 1.1.0
 description: 自动上传并定时发布视频到微信视频号（视频号助手网页版）。用原生 CDP 驱动已登录的 Chrome，完成上传视频、填短标题/描述/合集、声明原创、设定时发表（或即时发表）。当用户说「发视频号」「视频号发布」「上传视频号」「视频号定时发表」「补声明原创」「视频号排期」时使用。也用于核查已发布条目的原创声明状态。
 agent_created: true
 ---
@@ -99,5 +99,29 @@ node scripts/check-original.js [--all]
 
 - `scripts/cdp-publish.js` — 主发布脚本
 - `scripts/check-original.js` — 原创声明状态核查
+- `scripts/list-all.js` — 全量列表导出（puppeteer-core 拉 post_list → ch-posts.json）
+- `scripts/reschedule.js` — 改已排期条目的时间（修改并重新发表 → 补字段 → 重设定时 → 发表）
+
+## 更新日志
+
+### v1.1.0（2026-10-10）
+- 新增 `reschedule.js`：已排期未发布条目可直接改时间，不用删稿重传
+- 新增 `list-all.js`：一次性拉全量列表（标题/时间/原创状态），用于对账「哪些发了、哪些没发」
+- 时间面板 hour/minute 点选加「校验 + 重试 + 面板自动重开」，修掉偶发不生效
+- 记录时间戳 UTC 时区坑（对账时务必按北京时区换算）
 - `references/troubleshooting.md` — **踩坑清单，改代码前必读**
 - `assets/episodes.example.json` — 批量配置模板
+
+## 已排期改时间（reschedule.js）
+
+```bash
+node scripts/reschedule.js <ep> <月> <日> <时> [分]   # 分默认 00
+```
+
+流程：列表「修改并重新发表」→ 编辑页快照/补描述标题（desc 可能丢）→ 重设定时（真实点击）→ 发表，全程不 goto。
+时间面板 hour/minute 点击偶发失效，脚本内置「校验 + 6 次重试 + 面板自动重开」。
+
+## 复核时间戳的时区坑
+
+`new Date(t*1000).toISOString()` 是 UTC（比北京慢 8 小时）——用 ch-posts.json 对账时，
+北京时间要用 `datetime.fromtimestamp(t, tz=timezone(timedelta(hours=8)))`，否则会把 07:00 看成 23:00。
