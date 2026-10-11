@@ -2,27 +2,36 @@
 name: channels-video-publish
 slug: channels-video-publish
 displayName: 视频号自动发布
-version: 1.1.0
-description: 自动上传并定时发布视频到微信视频号（视频号助手网页版）。用原生 CDP 驱动已登录的 Chrome，完成上传视频、填短标题/描述/合集、声明原创、设定时发表（或即时发表）。当用户说「发视频号」「视频号发布」「上传视频号」「视频号定时发表」「补声明原创」「视频号排期」时使用。也用于核查已发布条目的原创声明状态。
+version: 1.2.0
+description: 内容做好之后的视频号自动发布。成品视频 + 文案就绪后，一条命令完成上传、填短标题/描述、归入合集、声明原创、设定时发表；支持按天批量排期，一次配好让系列内容自动逐日发出。也能对账「哪些发了哪些没发」、给已排期内容改时间。当用户说「发视频号」「视频号发布」「上传视频号」「视频号定时发表」「视频号排期」「查一下哪些没发」「改一下发布时间」时使用。
 agent_created: true
 ---
 
 # 视频号自动发布
 
-## Overview
+## 它接的是哪一段
 
-用原生 CDP（不走 playwright）驱动一台带远程调试端口、已登录视频号助手的 Chrome，
-把本地 mp4 上传到 `post/create`，填好短标题/描述/合集，勾原创，设定时后点发表。
+**内容生产之后的那一段。**
 
-核心价值：**避开新版「视频号助手」SPA 的 0×0 iframe 陷阱**。
-发布表单藏在一个宽高为 0 的 iframe 里，鼠标坐标全失效，只能走合成 DOM 事件——
-这些坑全在 `references/troubleshooting.md`，**改脚本前先读它**。
+你已经有成品 mp4 和写好的文案，接下来要在网页后台里做一堆重复动作：传文件、填短标题、写描述、选合集、勾原创、点日历设定时。这些动作每条视频都要重来一遍，跟内容质量毫无关系，但必须人肉完成。
+
+本 skill 把这整段收敛成一条命令。
+
+| 它负责 | 它不负责 |
+|---|---|
+| 上传成品视频 | 剪辑、合成、加字幕 |
+| 填短标题、描述 | 写文案、想选题 |
+| 归入合集 | 做封面、生成素材 |
+| 声明原创 | 互动、评论、看数据 |
+| 设定时 / 按天批量排期 | 删除已发布内容（不可逆，本 skill 不做） |
+| 发完之后：对账、改期 | — |
 
 ## When to use
 
 - 「把这条视频发到视频号」「视频号定时发 10-15 07:00」
-- 批量排期（配合 episodes.json 一条一条发）
-- 「核查视频号哪些内容没声明原创」
+- 「这十几条视频排一下，每天发一条」
+- 「查一下视频号里哪些发了哪些没发」
+- 「把已经排上的那条改到后天」
 
 ## 前置条件
 
@@ -44,30 +53,47 @@ agent_created: true
 
 ### Step 1 — 确认输入
 
-- 视频文件（mp4）、**短标题 ≤16 字**、描述、合集名（默认「怎么活得更好」）
+- 成品视频（mp4）、**短标题 ≤16 字**、描述、合集名（默认「怎么活得更好」）
 - 目标日期：**必须 ≤ 今天+14 天**（视频号硬限制，脚本会自动校验并中止）
 
 ### Step 2 — 先用 dry-run 跑一遍
-
-强烈建议第一次或改过脚本后先：
 
 ```bash
 node scripts/cdp-publish.js --file /path/a.mp4 --title "标题" \
   --desc "描述" --album "怎么活得更好" --duration 516 --day 15 --hour 07 --dry-run
 ```
 
-dry-run 会做完上传+填字段+保存草稿，**不点发表**。确认草稿箱里内容无误再正式跑。
+dry-run 会做完上传 + 填字段 + 保存草稿，**不点发表**。确认草稿箱里内容无误再正式跑。
 
 ### Step 3 — 正式发布
 
 - 定时：去掉 `--dry-run`，带 `--day/--hour`（可加 `--month`）
-- 即时发表：加 `--immediate`（不定时，绕过日历面板）
+- 即时发表：加 `--immediate`
 - 批量：维护 episodes.json，用 `--episodes <文件> --ep <编号>`
 
 ### Step 4 — 核对
 
 - 到草稿箱/发表记录核对日期时间与原创标记
 - 核查原创：`node scripts/check-original.js`
+
+## 批量排期（最常用的姿势）
+
+做一个系列时，真正省时间的用法是**一次配好，按天自动发**：
+
+```bash
+# episodes.json 里放好每一期的 file / title / desc / day
+node scripts/cdp-publish.js --episodes episodes.json --ep 24 --day 15 --hour 07
+```
+
+完成后视频号里会排成一列「将于 X 月 X 日 07:00 发表」，你不用再管它。
+注意视频号定时**最远只能选 14 天后**，超窗脚本直接中止（退出码 4），所以批量要按滚动窗口分批排。
+
+## 发完之后
+
+- **对账**：`node scripts/list-all.js` — 一次拉全量列表（标题/时间/原创状态），
+  和本地文件一比就知道哪些没发、哪条漏了原创
+- **改期**：`node scripts/reschedule.js <ep> <月> <日> <时> [分]` —
+  已排上定时但还没发的内容改时间，走「修改并重新发表」链路，不用删稿重传
 
 ## CLI
 
@@ -77,6 +103,8 @@ node scripts/cdp-publish.js --file <mp4> --title <短标题> [--desc <描述>]
        [--immediate] [--dry-run]
 node scripts/cdp-publish.js --episodes episodes.json --ep 24 --day 15 --hour 07
 node scripts/check-original.js [--all]
+node scripts/list-all.js
+node scripts/reschedule.js <ep> <月> <日> <时> [分]
 ```
 
 退出码：`0` 成功｜`1` 失败｜`3` 登录态失效需重扫｜`4` 定时日期超窗口（**未发布**）
@@ -89,39 +117,34 @@ node scripts/check-original.js [--all]
 - 删除已发布条目不可逆且丢播放/赞数据，**必须用户明确确认**（本 skill 不含删除动作）
 - 已发布条目**不能补声明原创**；>6 个月的连修改都不行，只能删旧重发
 
-## 已知未打通
+## 已知限制
 
-- ✅ 已验证：表单定位、文件上传、短标题、描述、合集
-- ⚠️ 未验证：定时日历面板展开、原创弹窗闭环、最终发表的弹窗链
-  （详见 `references/troubleshooting.md` 第 12 条）
+- ✅ 已跑通：上传、短标题、描述、合集、原创、定时发表、改期
+- ⚠️ 时间面板的小时点选偶发失效 → 脚本已内置「校验 + 重试 + 面板自动重开」
+
+> 视频号助手新版是 SPA，发布表单藏在 **0×0 的 iframe** 里，鼠标坐标点击全部失效，
+> 这也是为什么必须用 CDP 直连而不是普通的浏览器自动化。全部踩坑记录在
+> `references/troubleshooting.md`，**改脚本前先读它**。
 
 ## 文件
 
-- `scripts/cdp-publish.js` — 主发布脚本
+- `scripts/cdp-publish.js` — 主发布脚本（上传 / 填字段 / 合集 / 原创 / 定时 / 批量）
+- `scripts/list-all.js` — 全量列表导出，用于对账「哪些发了哪些没发」
+- `scripts/reschedule.js` — 改已排期条目的时间
 - `scripts/check-original.js` — 原创声明状态核查
-- `scripts/list-all.js` — 全量列表导出（puppeteer-core 拉 post_list → ch-posts.json）
-- `scripts/reschedule.js` — 改已排期条目的时间（修改并重新发表 → 补字段 → 重设定时 → 发表）
+- `references/troubleshooting.md` — **踩坑清单，改代码前必读**
+- `assets/episodes.example.json` — 批量排期配置模板
 
 ## 更新日志
 
+### v1.2.0（2026-10-11）
+- 定位重写：明确为「内容做好之后的发布环节」，主线是自动发布与批量排期，
+  对账/改期降为发完之后的辅助能力
+- 新增「它负责 / 不负责」边界表，避免被当成剪辑或文案工具调用
+- 批量排期提升为独立章节（系列内容一次配好、按天自动发）
+
 ### v1.1.0（2026-10-10）
 - 新增 `reschedule.js`：已排期未发布条目可直接改时间，不用删稿重传
-- 新增 `list-all.js`：一次性拉全量列表（标题/时间/原创状态），用于对账「哪些发了、哪些没发」
+- 新增 `list-all.js`：一次性拉全量列表，用于对账
 - 时间面板 hour/minute 点选加「校验 + 重试 + 面板自动重开」，修掉偶发不生效
-- 记录时间戳 UTC 时区坑（对账时务必按北京时区换算）
-- `references/troubleshooting.md` — **踩坑清单，改代码前必读**
-- `assets/episodes.example.json` — 批量配置模板
-
-## 已排期改时间（reschedule.js）
-
-```bash
-node scripts/reschedule.js <ep> <月> <日> <时> [分]   # 分默认 00
-```
-
-流程：列表「修改并重新发表」→ 编辑页快照/补描述标题（desc 可能丢）→ 重设定时（真实点击）→ 发表，全程不 goto。
-时间面板 hour/minute 点击偶发失效，脚本内置「校验 + 6 次重试 + 面板自动重开」。
-
-## 复核时间戳的时区坑
-
-`new Date(t*1000).toISOString()` 是 UTC（比北京慢 8 小时）——用 ch-posts.json 对账时，
-北京时间要用 `datetime.fromtimestamp(t, tz=timezone(timedelta(hours=8)))`，否则会把 07:00 看成 23:00。
+- 时间戳对账要用北京时区换算（`toISOString()` 是 UTC，差 8 小时）
